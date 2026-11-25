@@ -1,156 +1,166 @@
-# EFFITRAP
+# EFFITRAP 🪤
 
 AI keeps getting cheaper per answer, but we use so much more of it that its total electricity keeps rising. Here are four simple fixes. Each one: look, press, see the saving.
 
-**Links:** [Slides](https://claude.ai/artifact/BkwQSYMXYQsRBkg9JehDGi) · [Playground](https://claude.ai/artifact/QoYE25MmjTCHMezgWodZzL) · [Paper (PDF)](docs/efficiency-trap-paper.pdf)
+**📽️ [Slides (live)](https://claude.ai/artifact/BkwQSYMXYQsRBkg9JehDGi)** · **🕹️ [Playground](https://claude.ai/artifact/QoYE25MmjTCHMezgWodZzL)** · **📄 [Paper (PDF)](docs/efficiency-trap-paper.pdf)** · **🖼️ [Slides (PowerPoint)](docs/The-Efficiency-Trap-slides.pptx)**
 
-*NYU CS-GY 6033G Design and Analysis of Algorithms I · final project.*
+*NYU CS-GY 6033G Design and Analysis of Algorithms I · final project · Student ID N18349850*
 
-**Algorithms for escaping AI's efficiency trap.**
+---
 
-> Every green-AI tool makes each job cheaper. That's exactly the trap: cheaper jobs → more jobs → a bigger total. **effitrap also caps the total.**
-AI got 33× cheaper per answer in a year and still used more electricity. This package implements the four moves out, each as a real algorithm with tests and benchmarks.
+## The idea in 30 seconds
 
-*CS-GY 6033G Design and Analysis of Algorithms I · NYU · Student ID N18349850*
+- Google made each AI answer **33× cheaper** in one year. Electricity for AI data centres still went **+50%** (IEA, 2026). Cheaper answers → many more answers → a bigger total. That's the **Jevons paradox**.
+- So instead of only making each answer cheaper, effitrap answers an algorithms question: **how do we run AI under a fixed energy budget, at the cleanest hours, and still answer everyone well?**
+- It splits into two problems, each solved by a classic algorithm and checked against a slower, trusted method:
 
-| Move | Module | Algorithm | Complexity |
+| Question | Everyday idea | Algorithm | Checked against |
 |---|---|---|---|
-| 🩺 Do less | `router` | Budgeted model routing = multiple-choice knapsack, dynamic programming | O(n·m·B) |
-| 🚌 Share | `batching` | Amortised cost F/b + v; best batch by binary search under memory + latency limits | O(log b) |
-| 🧑‍💼 Share | `speculative` | Speculative decoding: closed form (geometric series) + Monte Carlo check | O(γ) |
-| ☀️ Time it | `schedule` | Carbon-aware scheduling: greedy (sort) and quickselect; baselines run-now and flexible-start (sliding window) | O(n log n) / O(n) expected |
-| 🎯 Cap it | `budget`, `experiment` | Fixed energy budget; multiple-choice knapsack with a defer option; one-year experiment vs per-job efficiency | O(n·m·B) |
-| 👀 Show it | `identity`, `units` | E = Σ N·w·ε decomposition, rebound bound, Wh → phone charges | O(k) |
+| ☀️ **WHEN** should a job run? | take the cleanest hours | greedy (proved optimal), quickselect, sliding window | a linear-programming solver |
+| 🎒 **WHICH** model, within budget? | pack a backpack: most value, limited space | knapsack, dynamic programming | trying every combination |
+| 🚌 Bonus: how many per trip? | split the taxi fare | amortised cost, binary search | checking every size |
+| 🧑‍💼 Bonus: the intern trick | marking is faster than writing | speculative decoding, geometric series | 200,000 simulated runs |
 
+---
 
-**Doesn't a rate limit already do this?** A rate limit is a bouncer: same energy cap, first come first served. At the IEA's growth pace, after a year it answers 61% of requests; the knapsack, with the *same energy*, answers 100% (95% at full quality). At 30× growth: 38% vs 100%. Run `effitrap experiment` to see it.
-
-
-## What is it for? (in one breath)
-
-effitrap does **not** change the AI model. It sits **between your app and the AI**, like a smart door, and answers three questions before each call:
-
-| Question | effitrap's answer |
-|---|---|
-| 🐭 Which brain? | the smallest model that's good enough for this request |
-| ☀️ Now or later? | if it isn't urgent, wait for cleaner electricity |
-| 🎒 How much is left? | a running energy budget; when it's tight, right-size instead of refusing people |
-
-### Use it in 3 lines
+## Live demo (2 minutes) 🎬
 
 ```bash
-pip install effitrap.zip        # no other dependencies
+pip install .            # from this folder; the core has no dependencies (Python 3.9+)
 ```
+
+### 1. What does a day of AI cost?
+```
+$ effitrap day
+🗓️  A day of AI: 15 texts, 10 images, 3 videos
+   text        4.5 Wh  █
+   image      17.0 Wh  █
+   video     345.0 Wh  ████████████████████████████
+   total     366.5 Wh = 0.37 kWh
+   ≈ 24 phone charges 📱  ≈ 6.1 laptop charges 💻
+   🎬 Verdict: the videos did it. It's always the videos.
+```
+
+### 2. ☀️ WHEN: wait for the sun
+```
+$ effitrap schedule
+🏃 run now                  1185.0 g CO₂  (   0% less)  hours [0, 1, 2, 3]
+⏰ flexible start            269.0 g CO₂  (  77% less)  hours [12, 13, 14, 15]
+🧠 greedy (optimal)          269.0 g CO₂  (  77% less)  hours [12, 13, 14, 15]
+☀️  The sun says you're welcome.
+```
+With live data for Great Britain (free, no key), plan a 4-hour job and launch it at the cleanest time:
+```
+$ effitrap run --hours 4 --within 24 --gb -- python train.py
+```
+It re-checks the forecast every 30 minutes, keeps its plan if a download fails, and never misses the deadline. Add `--dry-run` to see the plan without starting anything.
+
+### 3. 🎒 WHICH: the backpack trick
+```
+$ effitrap pick "Translate good morning into Hindi" --budget 5000
+🧠 difficulty 0.21 → use tiny (0.1 Wh) · 4999.9 Wh left
+$ effitrap pick "Prove this theorem about prime numbers"
+🧠 difficulty 0.99 → use big (8 Wh) · 4991.9 Wh left
+$ effitrap budget status
+🔋 ░░░░░░░░░░░░░░░░░░░░ 0% used · 8.1 of 5000 Wh · 4991.9 Wh left
+```
+```
+$ effitrap route
+🎒 Budgeted router (knapsack DP), budget 10.0 Wh -> quality 4.50:
+   small (9B), small (9B), medium (70B), small (9B), small (9B), medium (70B)
+   uses 9.2 Wh.
+```
+
+### 4. Does it beat a rate limit? (same energy, one simulated year)
+```
+$ effitrap experiment
+month   each job cheaper  effitrap cap   answered  full quality  rate limit answers
+    0              1.00x         0.93x       100%           99%                100%
+   12              1.50x         0.89x       100%           95%                 61%
+🚪 A rate limit with the SAME energy answers 61%. Bouncer vs knapsack.
+```
+*(Rows for months 3–9 omitted here.)*
+
+### 5. 🚌 The bus and 🧑‍💼 the intern (for the companies running the AI)
+```
+$ effitrap batch
+🚌 before (wasteful memory)   max fit  20, best batch  20, energy/request  10.00 J (vs 105 J alone)
+🚌 after PagedAttention       max fit  64, best batch  60, energy/request   6.67 J (vs 105 J alone)
+$ effitrap spec
+🧑‍💼 alpha=0.8, draft cost ratio c=0.05: best draft length gamma=8
+   tokens per big-model call: formula 4.329, simulation 4.312
+   expected speed-up ≈ 3.09x. The intern is worth it.
+```
+
+### 6. Prove it's right
+```
+$ pip install pytest scipy && pytest
+906 passed in ~9 s
+```
+
+---
+
+## Use it in your own code (one line)
+
+effitrap never touches the AI model. It sits between your app and **any** AI and decides **which model** and **when**.
 
 ```python
-from effitrap import Gate
-gate = Gate(budget_wh=5000)                     # this week's AI energy
-choice = gate.pick("Summarise this email")      # -> tiny model, 0.1 Wh
-answer = call_my_ai(choice.model, prompt)       # your existing code, unchanged
+from effitrap import Gate, CLAUDE_FAMILY
+
+gate = Gate(budget_wh=5000, models=CLAUDE_FAMILY)   # this week's AI energy
+choice = gate.pick(prompt)                           # → claude-haiku / sonnet / opus, or None = wait
+if choice.model:
+    reply = client.messages.create(model=choice.model, max_tokens=1024,
+                                   messages=[{"role": "user", "content": prompt}])
 ```
+- Any provider: pass your own `Model("name", wh_per_answer, quality)` list.
+- A group of requests: `gate.pick_many(prompts)` solves the exact knapsack for the whole group.
+- Full Claude example (batching deferrable work at the cleanest hour): [`examples/claude_only.py`](examples/claude_only.py).
+- Web API: `pip install .[api]` then `uvicorn effitrap.api:app` (`/schedule`, `/route`, `/day`, `/health`).
 
-Or from the terminal: `effitrap pick "Prove this theorem"` · `effitrap run --gb -- python train.py` · `effitrap budget status`.
+---
 
-### Only use Claude?
+## What's inside
 
-Claude is already a family, so you still never switch models by hand: `Gate(models=CLAUDE_FAMILY)` sends easy questions to Haiku, medium ones to Sonnet and hard ones to Opus. Questions that can wait go out later as one Message Batch at the cleanest hour (Anthropic bills batches at 50%). Full example: `examples/claude_only.py`. Energy per Claude answer isn't published, so the defaults are IEA-based stand-ins.
-
-### Where the pollution forecast comes from
-
-`--gb`: Great Britain's free half-hourly forecast (checked live on 2026-11-24; a recording is in `tests/data/`). `--zone DE`: any Electricity Maps zone (needs a token with forecast access). `--csv`: your own numbers. While waiting, `effitrap run` re-checks a live forecast every 30 min (`--replan`), keeps the last plan if a download fails, starts at once if there is no forecast at all, and never misses the deadline. With forecasts off by up to ±30% each hour, waiting still saved 54% on average across 300 simulated days.
-
-**Honest scope:** batching and speculative decoding happen inside serving engines such as vLLM; effitrap computes the best settings for them (`effitrap batch`, `effitrap spec`) but doesn't replace them. Difficulty is estimated with a simple heuristic; plug in a trained router (e.g. RouteLLM) for production.
-
-## Why would you use this? 🤔
-
-Every AI job uses electricity. effitrap gives you three things you can do **today**, without new hardware:
-
-| You are… | You type… | You get… |
+| File | Answers the question | Algorithm |
 |---|---|---|
-| 🧑‍🎓 a student or researcher training a model | `effitrap run --hours 4 --within 24 --gb -- python train.py` | Your job waits for the cleanest hours on the grid, then starts by itself. Same results, less carbon (77% on the sample day). |
-| 🏗️ building an app on top of AI models | `route_threshold(...)` / `route_budgeted(...)` in your code | Easy questions go to small models and hard ones to big models. On the demo questions: 12.8 Wh instead of 48 Wh (−73%), within an energy budget you set. |
-| ⚙️ running your own model server | `effitrap batch --memory 80 --weights 26 --kv 0.8 --sla 50` | The biggest batch that fits your memory and latency limit, and how much paging memory would gain you. |
-| 🎓 teaching, writing or arguing about AI energy | `effitrap day`, `effitrap trap` | Honest numbers in phone charges, and the Jevons maths in one line. |
+| `effitrap/gate.py` | “Which brain, now or later, budget left?” (start here) | knapsack DP for groups |
+| `effitrap/schedule.py` | “Which hours should my job run in?” | greedy · quickselect O(n) · sliding window O(n) |
+| `effitrap/router.py`, `budget.py` | “Best answers without going over budget?” | multiple-choice knapsack, O(n·m·B) |
+| `effitrap/batching.py` | “How many requests per trip?” | amortised cost · binary search O(log b) |
+| `effitrap/speculative.py` | “How many of the intern's words survive?” | geometric series + Monte Carlo check |
+| `effitrap/carbon.py` | “Where does the pollution forecast come from?” | GB API · Electricity Maps · CSV |
+| `effitrap/experiment.py` | “Does it beat a rate limit?” | one-year simulation |
+| `bench/bench.py` | “How fast is it?” | sort vs quickselect at 10³–10⁶ hours |
 
-**Scope, honestly:** effitrap plans *when* and *how* to compute. It doesn't measure your hardware's power draw, and the router's quality scores are yours to supply. Run it beside your existing tools, not instead of them.
+## How the tests work
 
-## Install
+Every test solves a problem **two ways** and compares: my fast algorithm against a slow, trusted method, on seeded random inputs anyone can replay.
 
-```bash
-pip install -e .            # library + CLI, no dependencies
-pip install -e ".[api]"     # + HTTP API (FastAPI)
-pip install -e ".[dev]"     # + tests (pytest, scipy oracle, httpx)
-```
+| Check | Random data | Compared against | Cases |
+|---|---|---|---|
+| ☀️ cleanest hours | days of 1–40 hours, pollution 20–400 (ties on purpose) | SciPy linear programming + a second algorithm | 600 |
+| 🎒 backpack trick | 1–5 requests × 1–4 models, random budgets | every combination (brute force) | 180 |
+| 🚪 vs rate limit | a year at 15×, 30×, 60×, 120× growth | first come, first served, same energy | 8 |
+| 🌦️ forecasts | the real GB forecast (24 Nov 2026) + 300 days with ±30% error | the true values; deadline never missed | 59 |
+| 🚌 bus size | memory-waste × latency settings | checking every size | 20 |
+| 🧑‍💼 intern formula | 4 settings | 200,000 simulated runs | 4 |
+| 🧮 slide examples + 🛠️ the rest | greedy 7 vs best 10; the hand-worked table; every command, API, Claude example | known answers | 35 |
 
-## Use it
+The tests also caught one real bug during development: when a job needed every hour, the fast scheduler picked hours in the wrong order.
 
-```bash
-effitrap day                        # what a day of AI costs (spoiler: the videos)
-effitrap schedule                   # when to run a 4-hour job (illustrative sample day)
-effitrap schedule --csv grid.csv    # with your own carbon-intensity data
-effitrap schedule --gb              # with Great Britain's live forecast (api.carbonintensity.org.uk)
-effitrap route --budget 10          # pick models for 6 requests within 10 Wh
-effitrap batch --waste 0.7          # best batch size before/after PagedAttention-style paging
-effitrap spec --alpha 0.8 --c 0.05  # best draft length for speculative decoding
-effitrap trap --total 1.5 --per-task 0.1   # how much demand must have grown (Jevons bound)
-effitrap run --hours 4 --within 24 --gb -- python train.py   # wait for clean power, then run
-effitrap budget set 5000            # cap this week's AI energy (Wh)
-effitrap budget spend 120 --name train
-effitrap experiment                 # each-job-cheaper vs capped total, one year
-```
+## Honest limits
 
-## The experiment
-
-Same requests, same efficiency gains (×10/yr), demand ×15/yr (both implied by IEA 2026). Today's tools (cheapest adequate model per request) end the year at **1.5×** the energy. effitrap's cap holds at **≤1.0×**, answering 100% of requests, 95% at full quality. At ×60 demand the cap still holds but must defer 28%, making the trade-off visible. Question mix and model quality are illustrative; energies per answer are IEA lab values.
-
-
-```python
-from effitrap import linear_schedule, schedule_cost
-c = [300, 290, 120, 70, 65, 90, 250]     # g CO2/kWh per hour
-x = linear_schedule(c, energy=3, cap=1)   # -> [0, 0, 0, 1, 1, 1, 0]
-```
-
-HTTP API: `uvicorn effitrap.api:app` → `POST /schedule`, `POST /route`, `GET /day`, `GET /health`.
-
-## Proof that greedy is optimal (scheduling)
-
-Minimise Σ c[t]·x[t] subject to Σ x[t] = E and 0 ≤ x[t] ≤ P.
-If some energy sits in a dirtier slot j while a cleaner slot i (c[i] < c[j]) has room, move δ = min(P − x[i], x[j]) from j to i: the cost changes by δ(c[i] − c[j]) < 0. So an optimal schedule never leaves a cleaner slot unfilled while using a dirtier one, which is exactly the greedy schedule. Every slot has the same capacity, so the job uses the ⌈E/P⌉ cleanest slots: quickselect finds the threshold in expected O(n).
-
-## Tests: 47 checks, run on 904 random cases
-
-```bash
-pytest -q
-```
-
-- Scheduler: greedy == quickselect on 300 random instances (with ties); matches a **linear-programming oracle** (scipy HiGHS) on 100; the exchange invariant holds; baselines never beat optimal.
-- Router: DP == **brute force** over every combination on 120 random instances; budget never exceeded.
-- Batching: binary search == linear scan over 20 configurations; costs fall with diminishing returns.
-- Speculative decoding: closed form == Monte Carlo (200k trials) within 1%.
-- CLI and HTTP API tests, including `effitrap run` actually launching a command.
-
-The test suite caught one real bug: when a job needed every slot, the partial slot went to the wrong hour. Fixed in `schedule.py`. 🐛→✅
-
-## Benchmarks (`python bench/bench.py`)
-
-| n slots | greedy sort | quickselect |
-|---:|---:|---:|
-| 1,000 | 0.1 ms | 0.3 ms |
-| 10,000 | 1.6 ms | 1.2 ms |
-| 100,000 | 26.9 ms | 19.3 ms |
-| 1,000,000 | 270 ms | 172 ms |
-
-Asymptotics win at scale (1.6× at a million slots); at small n, sorting's low constant factor wins. Your numbers will vary by machine.
-
-Sample day, 4-hour job: running now 1,185 units → optimal 269 (−77%).
+- It plans with **estimates**: AI companies don't publish energy per answer, so defaults come from IEA lab measurements. Plug in your own.
+- Difficulty is guessed by a simple rule; a trained router (e.g. RouteLLM) can replace it.
+- Live forecasts are free only for Great Britain; elsewhere use Electricity Maps (paid key) or your own numbers.
+- The one-year experiment uses IEA growth rates but an illustrative question mix.
+- An algorithm can spend a budget well. **Choosing the budget is a human decision.**
 
 ## Where the numbers come from
 
-- Per-task energy: IEA, *Energy and AI* (2025), lab tests, GPU only: text 0.3 Wh, image 1.7 Wh, 6 s video 115 Wh; phone charge ~15 Wh, laptop ~60 Wh.
-- "Day of AI" mix (15 texts, 10 images, 3 videos): MIT Technology Review (2025).
-- Batching, paging, speculative decoding: IEA (2025); Kwon et al. (SOSP 2023); Leviathan et al. (ICML 2023).
-- Sample carbon curve: **illustrative**, shaped like MIT Technology Review's California example (<70 g/kWh afternoon, >300 at night).
-- Router quality scores and batching constants: **illustrative defaults**. Pass your own.
+IEA *Energy and AI* (2025) and *Key Questions on Energy and AI* (2026) · Google, Elsworth et al. (2025) · MIT Technology Review (2025) · National Grid carbon-intensity API · full list in the [paper](docs/efficiency-trap-paper.pdf).
 
 ## Licence
-MIT
+
+MIT. See [LICENSE](LICENSE).
